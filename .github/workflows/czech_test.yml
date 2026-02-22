@@ -34,7 +34,7 @@ jobs:
             # Use sed instead of grep for variable-length patterns
             name=$(echo "$xml" | sed -n 's/.*<r3d:repositoryName[^>]*>\([^<]*\)<.*/\1/p' | head -1 | sed 's/"/""/g')
             url=$(echo "$xml" | sed -n 's/.*<r3d:repositoryURL>\([^<]*\)<.*/\1/p' | head -1)
-            content_types=$(echo "$xml" | grep -oP '(?<=<r3d:contentType>)[^<]+' | tr '\n' '|' | sed 's/|$//')
+            content_types=$(echo "$xml" | sed -n 's/.*<r3d:contentType[^>]*>\([^<]*\)<.*/\1/p' | tr '\n' '|' | sed 's/|$//')
             
             echo "\"${id}\",\"${name}\",\"${url}\",\"${content_types}\"" >> czech_repositories.csv
             
