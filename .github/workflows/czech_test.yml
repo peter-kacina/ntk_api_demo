@@ -13,81 +13,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Fetch Czech repositories
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xmlstarlet
-
-      - name: Fetch and process Czech repositories
-        run: |
-          #!/bin/bash
-          set -e
+          # Get Czech repos from beta API
+          curl -s "https://www.re3data.org/api/beta/repositories?countries[]=CZE" -o czech_list.xml
           
-          echo "=== Fetching Czech repositories from re3data API ==="
+          # Extract IDs
+          grep -oP '(?<=<id>)r3d[0-9]+(?=</id>)' czech_list.xml > ids.txt
           
-          # Step 1: Get filtered list (Czech only)
-          echo "Fetching list with countries[]=CZE..."
-          curl -s "https://www.re3data.org/api/v1/repositories?countries[]=CZE" -o czech_list.xml
+          echo "Found $(wc -l < ids.txt) Czech repositories"
           
-          # Step 2: Extract IDs from list using xmlstarlet
-          echo "Extracting repository IDs..."
-          xmlstarlet sel -t -v "//id" -n czech_list.xml 2>/dev/null | grep -E '^r3d[0-9]+$' > repo_ids.txt || true
-          
-          # Fallback to grep if xmlstarlet fails
-          if [ ! -s repo_ids.txt ]; then
-            echo "Fallback: using grep..."
-            grep -oP '(?<=<id>)r3d[0-9]+(?=</id>)' czech_list.xml > repo_ids.txt
-          fi
-          
-          total=$(wc -l < repo_ids.txt)
-          echo "Found $total Czech repositories"
-          
-          # Step 3: Create CSV header
+          # CSV header
           echo 'id,name,url,content_types' > czech_repositories.csv
           
-          # Step 4: Fetch details for each repo
-          count=0
+          # Fetch details for each
           while read -r id; do
-            [ -z "$id" ] && continue
-            count=$((count + 1))
+            echo "Fetching $id..."
+            xml=$(curl -s "https://www.re3data.org/api/beta/repository/${id}")
             
-            echo "[$count/$total] Fetching $id..."
+            name=$(echo "$xml" | grep -oP '(?<=<r3d:repositoryName[^>]*>)[^<]+' | head -1 | sed 's/"/""/g')
+            url=$(echo "$xml" | grep -oP '(?<=<r3d:repositoryURL>)[^<]+' | head -1)
+            content_types=$(echo "$xml" | grep -oP '(?<=<r3d:contentType[^>]*>)[^<]+' | tr '\n' '|' | sed 's/|$//')
             
-            # Fetch detail XML
-            curl -s "https://www.re3data.org/api/v1/repository/${id}" -o "temp_detail.xml"
-            
-            # Parse using xmlstarlet with namespace handling
-            name=$(xmlstarlet sel -N r3d="http://www.re3data.org/schema/2-2" \
-              -t -v "//r3d:repositoryName" temp_detail.xml 2>/dev/null | head -1 | sed 's/"/""/g')
-            
-            url=$(xmlstarlet sel -N r3d="http://www.re3data.org/schema/2-2" \
-              -t -v "//r3d:repositoryURL" temp_detail.xml 2>/dev/null | head -1)
-            
-            # Get all content types, join with pipe
-            content_types=$(xmlstarlet sel -N r3d="http://www.re3data.org/schema/2-2" \
-              -t -v "//r3d:contentType" -n temp_detail.xml 2>/dev/null | \
-              grep -v '^$' | tr '\n' '|' | sed 's/|$//')
-            
-            # Fallback parsing with grep if xmlstarlet fails
-            if [ -z "$name" ]; then
-              name=$(grep -oP '(?<=<r3d:repositoryName[^>]*>)[^<]+' temp_detail.xml | head -1 | sed 's/"/""/g')
-              url=$(grep -oP '(?<=<r3d:repositoryURL>)[^<]+' temp_detail.xml | head -1)
-              content_types=$(grep -oP '(?<=<r3d:contentType[^>]*>)[^<]+' temp_detail.xml | tr '\n' '|' | sed 's/|$//')
-            fi
-            
-            # Write CSV row
             echo "\"${id}\",\"${name}\",\"${url}\",\"${content_types}\"" >> czech_repositories.csv
             
-            # Rate limit
             sleep 0.5
-            
-          done < repo_ids.txt
-          
-          rm -f temp_detail.xml
+          done < ids.txt
           
           echo ""
-          echo "=== Done! Generated czech_repositories.csv ==="
-          echo ""
+          echo "=== Result ==="
           cat czech_repositories.csv
 
       - name: Upload CSV artifact
@@ -97,12 +51,12 @@ jobs:
           path: czech_repositories.csv
           retention-days: 90
 
-      - name: Commit CSV to repo
+      - name: Commit CSV to repository
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add czech_repositories.csv 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "Update Czech repos CSV $(date +'%Y-%m-%d')"
+          git add czech_repositories.csv || true
+          git diff --staged --quiet || git commit -m "Update Czech repos $(date +'%Y-%m-%d')"
           git push || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
