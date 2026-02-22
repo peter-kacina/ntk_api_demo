@@ -16,7 +16,7 @@ jobs:
       - name: Fetch Czech repositories
         run: |
           # Get Czech repos from beta API
-          curl -s "https://www.re3data.org/api/beta/repositories?countries[]=CZE" -o czech_list.xml
+          curl -s "https://www.re3data.org/api/beta/repositories?countries[]=AUS" -o czech_list.xml
           
           # Extract IDs
           grep -oP '(?<=<id>)r3d[0-9]+(?=</id>)' czech_list.xml > ids.txt
